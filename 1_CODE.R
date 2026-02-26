@@ -1,7 +1,4 @@
 # Load necessary libraries
-install.packages("Rbeast")
-
-
 library(sf)
 library(sp)
 library(tidyverse)
@@ -70,7 +67,6 @@ data_sf <- st_transform(data_sf, st_crs(boundary))
 
 #apply tree mask
 tree_mask <- brick("/scratch/ope4/MERGE/TREE_MASK/TREE_MASK.TIF")
-#tree_mask <- brick("/scratch/ope4/Downloads//DATA/TIF/Tree_NoTree_Mark.tif")
 
 
 
@@ -318,104 +314,3 @@ ggplot(df_precip, aes(x = Month, y = Trend)) +
 #
 #
   
-
-##----------------------------------------------
-#------------------------ bands 
-
-
-library(purrr)
-
-decomposed_results <- long_data %>%
-  #filter(cover == 4) %>%
-  split(.$Band) %>%
-  map(~ {
-    x <- .x %>% arrange(year_month)
-    ts_data <- ts(x$Mean_Value, start = c(year(x$year_month[1]), month(x$year_month[1])), frequency = 12)
-    decompose(ts_data, type = "additive")
-  })
-
-library(zoo)
-
-my_colors <- c(
-  "#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#66a61e",
-  "#e6ab02", "#a6761d", "#666666", "#a6cee3", "#1f78b4",
-  "#b2df8a", "#33a02c", "#fb9a99"
-)
-
-# Create a named list for custom x-axis labels with subscripts
-custom_labels <- c(
-  "B1" = expression(B[1]),
-  "B2" = expression(B[2]),
-  "B3" = expression(B[3]),
-  "B4" = expression(B[4]),
-  "B5" = expression(B[5]),
-  "B6" = expression(B[6]),
-  "B7" = expression(B[7]),
-  "B8" = expression(B[8]),
-  "B8A" = expression(B[8*A]),
-  "B9" = expression(B[9]),
-  "B11" = expression(B[11]),
-  "B12" = expression(B[12])
-)
-
-
-
-# Combine trend components into one dataframe
-all_trends <- purrr::map_dfr(names(decomposed_results), function(band) {
-  data.frame(
-    Date = as.Date(as.yearmon(time(decomposed_results[[band]]$trend))),
-    Band = band,
-    Trend = as.numeric(decomposed_results[[band]]$trend)
-  )
-}) %>% 
-  filter(!is.na(Trend))
-
-
-# Define the desired order of bands exactly as in your data
-desired_order <- c("B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12")
-
-# Set Band as factor with levels in that order
-all_trends$Band <- factor(all_trends$Band, levels = desired_order)
-
-
-# Plot with manual colors and custom legend labels
-ggplot(all_trends, aes(x = Date, y = Trend, color = Band)) +
-  geom_line() + 
-  scale_color_manual(values = my_colors, labels = custom_labels) +
-  labs(title = "Decomposed Trend by Band", x = "Date", y = "Decomposed Trend") +
-  theme_minimal() +
-  scale_x_date(date_breaks = "6 months", date_labels = "%Y-%m") +
-  theme_minimal(base_size = 13) +
-  theme(
-    panel.border = element_rect(colour = "black", fill = NA, linewidth = 1.5),
-    plot.title = element_text(face = "bold", hjust = 0.5),
-    axis.title = element_text(face = "bold"),
-    axis.text = element_text(face="bold", color = "black"),
-    axis.text.x = element_text(angle = 45, hjust = 1)
-  ) 
-
-# Attack dates
-first_date <- as.Date("2023-06-17")
-last_date  <- as.Date("2024-08-15")
-
-##Monica's point with 1st visit date and last visit date.
-ggplot(all_trends, aes(x = Date, y = Trend, color = Band)) +
-  geom_line() + 
-  scale_color_manual(values = my_colors, labels = custom_labels) +
-  labs(title = "Decomposed Trend by Band", x = "Date", y = "Decomposed Trend") +
-  scale_x_date(date_breaks = "6 months", date_labels = "%Y-%m") +
-  # Vertical dashed lines with size 2
-  geom_vline(xintercept = first_date, linetype = "dashed", color = "red") +
-  # geom_vline(xintercept = last_date,  linetype = "dashed", color = "blue")+
-  theme_minimal(base_size = 13) +
-  theme(
-    panel.border = element_rect(colour = "black", fill = NA, linewidth = 1.5),
-    plot.title = element_text(face = "bold", hjust = 0.5),
-    axis.title = element_text(face = "bold"),
-    axis.text = element_text(face="bold", color = "black"),
-    axis.text.x = element_text(angle = 45, hjust = 1)
-  ) 
-
-
-
-

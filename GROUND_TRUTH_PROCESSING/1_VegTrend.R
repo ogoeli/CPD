@@ -31,7 +31,6 @@ head(data[, c("longitude", "latitude")])
 #get a shapefile to find boundary
 boundary <- read_sf("/scratch/ope4/POLY_2/POLY_2/POLY_2.shp")
 
-
 # Ensure your 'data' dataframe has 'longitude' and 'latitude' columns
 data_sf <- st_as_sf(data, coords = c("longitude", "latitude"), crs = st_crs(boundary))
 

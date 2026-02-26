@@ -11,96 +11,18 @@ library(Rbeast)
 library(DBEST)
 
 
-#data <- read.csv('/scratch/ope4/Downloads/Band_Values_By_Class.csv', quote = "\"")
-
-data <- boundary
-
-
-
-# Step 1: Extract the date part (first 8 characters from 'system.index')
-data$timestamp <- substr(data$system.index, 1, 8)
-
-# Step 2: Convert the extracted date to Date class in R
-data$timestamp <- as.Date(data$timestamp, format = "%Y%m%d")
-
-# Step 3: Extract the year and month from timestamp
-data$year_month_1 <- format(data$timestamp, "%Y-%m")
-
-# Extract year and month from the system_index column
-data <- data %>%
-  mutate(
-    year = substr(system.index, 1, 4),
-    month = substr(system.index, 5, 6),
-    year_month = paste(year, month, sep = "-")
-  )
-
-
-# Calculate indices
-data$NDVI <- (data$B8 - data$B4) / (data$B8 + data$B4)
-data$NDWI <- (data$B8 - data$B11) / (data$B8 + data$B11)
-data$RENDVI <- (data$B8 - data$B5) / (data$B8 + data$B5)
-data$CCCI <- data$RENDVI/data$NDVI
-
+#load in the ground truth dataset with tree mask applied
+data <- data
 
 df <- data |>
-  group_by(.geo, year_month_1) |>
- # distinct(.geo, year_month_1, .keep_all = TRUE) |>
-  filter(cover == 1) # | cover == 3
+  group_by(.geo, year_month_1) 
 
 
-# Assuming 'geometry' identifies the location, filter by the first value of 'geometry'
-df_2 <- df[df$.geo == df$.geo[1], ]
+#---------------------------------------------------------------CPD algorithm
 
-str(df_2)
-
-# Step 2: Convert the extracted date to Date class in R
-df_2$year_month <- as.Date(df_2$year_month, format = "%Y%m")
-
-
-############################
-
-time_series <- ts(df_2$NDVI, start=c(2019, 1), end = c(2024, 12), frequency = 12)  # assuming monthly data from 2021
-
-# Interpolate missing values
-time_series_imputed <- na.approx(time_series)
-
-#  annual streamflow of the Nile River    
-out = beast(time_series_imputed, tcp.minmax =c(0,3), season='harmonic') #  'none': trend-only data without seasonlaity   
-print(out)                   
-plot(out, show.tip.label = TRUE, main = "Trend and abrupt change in NDVI value")
-abline(v = 2023.5671, col = "red", lty = 5)
-
-out_2 <- bfast(time_series_imputed, breaks = 3, season = 'harmonic')
-
-out_2$output
-
-plot(out_2)
-
-
-
-out$RMSE
-out$R2
-out$trend[1] #ncp
-out$trend[9][1] #cp
-out$trend[10][1] #cpPr
-out$season$cp[1]
-
-
-
-
-
-
-
-############################################################################################################### 
-
-
-library(bfast)
-library(zoo)
-library(dplyr)
-library(tidyr)
-
+#BEAST Algorithm--------------------
+#A loop to go through each ground truth pixel time series per index
 bands <- c("NDVI", "NDWI", "CCCI")
-
 
 run_all_algorithms <- function(df, band_name) {
   results <- list()
