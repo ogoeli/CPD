@@ -1,0 +1,166 @@
+colnames(df)[colnames(df) == '.geo'] <- 'geom'
+
+df <- df[!duplicated(df[c("geom")]), ]
+
+
+
+inner_join_BEAST <- inner_join(
+  final_results_BEAST,
+  df,
+  by = "geom")
+
+
+inner_join_BFAST <- inner_join(
+  final_results_BFAST,
+  df,
+  by = "geom")
+
+
+inner_join_DBEST <- inner_join(
+  final_results_DBEST,
+  df,
+  by = "geom")
+
+
+
+
+#dataset <- rbind(inner_join_CCCI, inner_join_NDWI,  inner_join_NDVI, inner_join_EWDI)
+
+USDA <- read.csv('/scratch/ope4/CPD_PAPER/damage_points_sf.csv')
+
+USDA <- USDA %>%
+  mutate(name = as.character(name))
+
+
+dataset_BEAST <- inner_join_BEAST %>% 
+  inner_join(USDA, by = join_by(name)) |>
+  dplyr::select(band, RMSE, R2, first_cp, second_cp, third_cp, period_1, period_2)
+
+
+dataset_BFAST <- inner_join_BFAST %>% 
+  inner_join(USDA, by = join_by(name)) |>
+  dplyr::select(band, RMSE, R2, date1, date2, date3, period_1, period_2)
+
+dataset_DBEST <- inner_join_DBEST %>% 
+  inner_join(USDA, by = join_by(name)) |>
+  dplyr::select(band, RMSE, R2, cp_date_1, cp_date_2, cp_date_3, period_1, period_2)
+
+##let all have same col names as date1..
+# Standardize DBEST names
+dataset_DBEST <- dataset_DBEST %>%
+  rename(
+    date1 = cp_date_1,
+    date2 = cp_date_2,
+    date3 = cp_date_3
+  )
+
+# Standardize BEAST names
+dataset_BEAST <- dataset_BEAST %>%
+  rename(
+    date1 = first_cp,
+    date2 = second_cp,
+    date3 = third_cp
+  )
+
+colnames(dataset_BFAST)
+
+
+##GET MEAN DIFF IN DAYS
+#Table 4. Variable performance. ----------------------------------------
+##
+
+dataset_BFAST <- dataset_BFAST %>%
+  mutate(
+    date1  = as.numeric(date1),
+    date2 = as.numeric(date2),
+    date3  = as.numeric(date3)
+  )
+
+
+decimal_year_to_date <- function(decimal_year) {
+  year <- floor(decimal_year)
+  fraction <- decimal_year - year
+  days_in_year <- 365
+  days_to_add <- round(fraction * days_in_year)
+  as.Date(paste0(year, "-01-01")) + days_to_add
+}
+
+##DOES NOT APPLY TO BFAST AND DBEST
+dataset_BFAST <- dataset_BFAST %>%
+  mutate(
+    date1  = decimal_year_to_date(date1),
+    date2 = decimal_year_to_date(date2),
+    date3  = decimal_year_to_date(date3)
+  )
+
+
+
+# Ensure dates are in Date format
+dataset_BFAST <- dataset_BFAST %>%
+  mutate(
+    period_1   = as.Date(period_1, format = "%m/%d/%Y"),
+    period_2   = as.Date(period_2, format = "%m/%d/%Y"),
+    date1  = as.Date(date1),
+    date2  = as.Date(date2),
+    date3  = as.Date(date3)
+  )
+
+
+# Compute the midpoint of the actual period
+dataset_BFAST <- dataset_BFAST %>%
+  mutate(actual_mid = period_1 + as.integer((period_2 - period_1) / 2))
+
+# Convert to Date if needed
+dataset_BFAST <- dataset_BFAST %>%
+  mutate(across(c(date1, date2, date3, period_1, period_2), as.Date))
+
+# Calculate absolute differences for each predicted-actual pair
+dataset_diff <- dataset_BFAST %>%
+  rowwise() %>%
+  mutate(
+    diff_1_1 = abs(as.numeric(date1 - period_1)),
+    diff_1_2 = abs(as.numeric(date1 - period_2)),
+    diff_2_1 = abs(as.numeric(date2 - period_1)),
+    diff_2_2 = abs(as.numeric(date2 - period_2)),
+    diff_3_1 = abs(as.numeric(date3 - period_1)),
+    diff_3_2 = abs(as.numeric(date3 - period_2))
+  ) %>%
+  ungroup()
+
+# Find minimum difference for each predicted date to any actual date
+dataset_diff <- dataset_diff %>%
+  mutate(
+    min_diff_cp1 = pmin(diff_1_1, diff_1_2, na.rm = TRUE),
+    min_diff_cp2 = pmin(diff_2_1, diff_2_2, na.rm = TRUE),
+    min_diff_cp3 = pmin(diff_3_1, diff_3_2, na.rm = TRUE)
+  )
+
+
+
+performance_dates_summary <- dataset_diff %>%
+  group_by(band) %>%
+  summarise(
+    mean_diff_cp1 = mean(min_diff_cp1, na.rm = TRUE),
+    mean_diff_cp2 = mean(min_diff_cp2, na.rm = TRUE),
+    mean_diff_cp3 = mean(min_diff_cp3, na.rm = TRUE),
+    
+    median_diff_cp1 = median(min_diff_cp1, na.rm = TRUE),
+    median_diff_cp2 = median(min_diff_cp2, na.rm = TRUE),
+    median_diff_cp3 = median(min_diff_cp3, na.rm = TRUE),
+    
+    n = n()
+  ) %>%
+  arrange(mean_diff_cp1)
+
+
+
+
+##TABLE 3: MEAN R2 AND RMSE---------------------------------
+dataset_DBEST %>%
+  group_by(band) %>%
+  summarise(
+    mean_RMSE = mean(RMSE, na.rm = TRUE),
+    mean_R2 = mean(R2, na.rm = TRUE)
+  )
+
+
