@@ -1,3 +1,16 @@
+# Load necessary libraries
+library(sf)
+library(sp)
+library(tidyverse)
+library(raster)
+library(dplyr)
+library(data.table)
+library(terra)
+library(jsonlite)
+library(bfast)
+library(Rbeast)
+library(DBEST)
+
 #### Explan the variation in CPD------------------PRECIP------------------------------------------
 # 1. Read your CSV (replace with your actual file path)
 precip <- read_csv("/scratch/ope4/CPD_PAPER/Monica_precipitation_time_series.csv")
@@ -58,7 +71,3 @@ ggplot(df_precip, aes(x = Month, y = Trend)) +
   geom_vline(xintercept = first_date, linetype = "dashed", color = "red") +
   geom_vline(xintercept = last_date,  linetype = "dashed", color = "red") +
   scale_x_date(date_breaks = "1 year", date_labels = "%Y")
-
-#
-#
-
