@@ -91,18 +91,7 @@ data$NDWI <- (data$B8 - data$B11) / (data$B8 + data$B11)
 data$RENDVI <- (data$B8 - data$B5) / (data$B8 + data$B5)
 data$CCCI <- data$RENDVI/data$NDVI
 data$CCCI = ifelse(data$NDVI == 0, NA, data$RENDVI / data$NDVI) 
-
-# Group by year_month and cover, and calculate the mean for each band
-grouped_data <- data %>%
-  group_by(year_month, cover) %>%
-  summarise(across(starts_with('B'), mean, na.rm = TRUE)) 
-
-grouped_data$year_month <- as.Date(paste0(grouped_data$year_month, "-01"))
-
-# Reshape the data for plotting
-long_data <- grouped_data %>%
-  pivot_longer(cols = starts_with('B'), names_to = 'Band', values_to = 'Mean_Value') 
-
+summary(data)
 
 
 #------------------------------------ Decomposed Indices Plotting 
@@ -110,7 +99,7 @@ long_data <- grouped_data %>%
 # Group by year_month and cover, and calculate the mean for each band
 grouped_data <- data %>%
   group_by(year_month, cover) %>%
-  summarise(across(matches('^(N|CC|E)'), mean, na.rm = TRUE)) 
+  summarise(across(matches('^(N|CC)'), mean, na.rm = TRUE)) 
 
 ##select year
 grouped_data$year_month <- as.Date(paste0(grouped_data$year_month, "-01"))
@@ -180,7 +169,8 @@ ggplot(df_trend, aes(x = Date, y = Trend)) +
   ) +
   geom_vline(xintercept = first_date, linetype = "dashed", color = "red") +
   geom_vline(xintercept = last_date,  linetype = "dashed", color = "red") +
-  scale_x_date(date_breaks = "1 year", date_labels = "%Y")
+  scale_x_date(limits = as.Date(c("2019-01-01", "2024-12-31")),
+               date_breaks = "1 year", date_labels = "%Y", expand = c(0, 0))
 
 
 

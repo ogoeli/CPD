@@ -40,7 +40,7 @@ data$NDVI <- (data$B8 - data$B4) / (data$B8 + data$B4)
 data$NDWI <- (data$B8 - data$B11) / (data$B8 + data$B11)
 data$RENDVI <- (data$B8 - data$B5) / (data$B8 + data$B5)
 data$CCCI <- data$RENDVI/data$NDVI
-
+summary(data)
 
 df <- data |>
   group_by(.geo, year_month_1) |>
