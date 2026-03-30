@@ -88,10 +88,15 @@ data <- boundary %>%
 # Calculate indices
 data$NDVI <- (data$B8 - data$B4) / (data$B8 + data$B4)
 data$NDWI <- (data$B8 - data$B11) / (data$B8 + data$B11)
-data$RENDVI <- (data$B8 - data$B5) / (data$B8 + data$B5)
-data$CCCI <- data$RENDVI/data$NDVI
-data$CCCI = ifelse(data$NDVI == 0, NA, data$RENDVI / data$NDVI) 
+data$NDRE <- (data$B8 - data$B5) / (data$B8 + data$B5)
+#Get NDRE min and max (excluding NA)
+data$NDRE_min <- min(data$NDRE)
+data$NDRE_max <- max(data$NDRE)
+#Compute normalized CCCI
+data$CCCI <- (data$NDRE - data$NDRE_min) / (data$NDRE_max - data$NDRE_min)
+# Summary
 summary(data)
+
 
 
 #------------------------------------ Decomposed Indices Plotting 

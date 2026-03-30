@@ -133,7 +133,7 @@ performance_dates_summary <- dataset_diff %>%
 
 
 ##TABLE 3: MEAN R2 AND RMSE---------------------------------
-dataset_DBEST %>%
+dataset_BFAST %>%
   group_by(band) %>%
   summarise(
     mean_RMSE = mean(RMSE, na.rm = TRUE),
