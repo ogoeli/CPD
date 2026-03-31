@@ -26,10 +26,10 @@ colnames(data_3)[colnames(data_3) == 'classification'] <- 'cover'
 
 
 poly_1 <- data_1 |>
-  filter (cover == 3) #3 for healthy and 4 for dead trees
+  filter (cover == 4) #3 for healthy and 4 for dead trees
 
 poly_3 <- data_3 |>
-  filter (cover == 3)
+  filter (cover == 4)
 
 data <- rbind(poly_1, poly_3)
 
