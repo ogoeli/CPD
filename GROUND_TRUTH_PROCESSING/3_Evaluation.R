@@ -54,6 +54,14 @@ dataset_BFAST <- dataset_BFAST %>%
     date3 = break3
   )
 
+##add new col to the 3 dataset
+dataset_BEAST$CPD <- "BEAST"
+dataset_BFAST$CPD <- "BFAST"
+dataset_DBEST$CPD <- "DBEST"
+
+#Stack the 3 dataset into 1
+data_stack <- rbind(dataset_BEAST, dataset_BFAST, dataset_DBEST)
+
 ##GET MEAN DIFF IN DAYS
 #Table 4. Variable performance. ----------------------------------------
 
@@ -67,7 +75,7 @@ decimal_year_to_date <- function(decimal_year) {
   as.Date(paste0(year, "-01-01")) + days_to_add
 }
 #change the date str to make Date format in R
-dataset_BFAST <- dataset_BFAST %>%
+data_stack <- data_stack %>%
   mutate(
     date1  = as.numeric(date1),
     date2 = as.numeric(date2),
@@ -77,14 +85,14 @@ dataset_BFAST <- dataset_BFAST %>%
 
 ##DOES NOT APPLY TO BFAST AND DBEST
 #only BEAST outputs their date in decimal
-dataset_BFAST <- dataset_BFAST %>%
+data_stack <- data_stack %>%
   mutate(
-    date1  = decimal_year_to_date(date1),
-    date2 = decimal_year_to_date(date2),
-    date3  = decimal_year_to_date(date3)
+    date1 = ifelse(CPD == "BEAST", decimal_year_to_date(date1), as.Date(date1, origin = "1970-01-01")),
+    date2 = ifelse(CPD == "BEAST", decimal_year_to_date(date2), as.Date(date2, origin = "1970-01-01")),
+    date3 = ifelse(CPD == "BEAST", decimal_year_to_date(date3), as.Date(date3, origin = "1970-01-01"))
   )
 # Ensure dates are in Date format
-dataset_BFAST <- dataset_BFAST %>%
+data_stack <- data_stack %>%
   mutate(
     period_1   = as.Date(period_1, format = "%m/%d/%Y"),
     period_2   = as.Date(period_2, format = "%m/%d/%Y"),
@@ -95,15 +103,15 @@ dataset_BFAST <- dataset_BFAST %>%
 
 # Compute the date of the actual period
 #used the last date when a tree was marked as infected
-dataset_BFAST <- dataset_BFAST %>%
+data_stack <- data_stack %>%
   mutate(actual_mid = period_2)
 # Convert to Date if needed
-dataset_BFAST <- dataset_BFAST %>%
+data_stack <- data_stack %>%
   mutate(across(c(date1, date2, date3, period_1, period_2), as.Date))
 
 # Calculate absolute differences for each predicted-actual pair
 #using the last date with observed infections
-dataset_diff <- dataset_BFAST %>%
+dataset_diff <- data_stack %>%
   rowwise() %>%
   mutate(
     diff_1_2 = abs(as.numeric(date1 - period_2)),
@@ -115,7 +123,7 @@ dataset_diff <- dataset_BFAST %>%
 ##get the mean difference 
 #average all 11 points for each algorithm across 3 index
 performance_dates_summary <- dataset_diff %>%
-  group_by(band) %>%
+  group_by(band, CPD) %>%
   summarise(
     mean_diff_cp1 = mean(diff_1_2, na.rm = TRUE),
     mean_diff_cp2 = mean(diff_2_2, na.rm = TRUE),
@@ -127,14 +135,14 @@ performance_dates_summary <- dataset_diff %>%
     
     n = n()
   ) %>%
-  arrange(mean_diff_cp1)
+  arrange(CPD)
 
 
 
 
 ##TABLE 3: MEAN R2 AND RMSE---------------------------------
-dataset_BFAST %>%
-  group_by(band) %>%
+data_stack %>%
+  group_by(band, CPD) %>%
   summarise(
     mean_RMSE = mean(RMSE, na.rm = TRUE),
     mean_R2 = mean(R2, na.rm = TRUE)

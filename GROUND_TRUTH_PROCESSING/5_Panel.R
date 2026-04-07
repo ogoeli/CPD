@@ -295,3 +295,239 @@ final_results_DBEST <- do.call(rbind, results_list_DBEST)
 summary(final_results_DBEST)
 
 #------------------------------------------------------------------------------------
+
+
+
+#Test BFAST for ALL in ONE figure
+# ===============================
+# 📚 Load libraries
+# ===============================
+library(sf)
+library(sp)
+library(tidyverse)
+library(raster)
+library(dplyr)
+library(data.table)
+library(terra)
+library(jsonlite)
+library(bfast)
+library(Rbeast)
+library(DBEST)
+library(zoo)  # for na.approx
+
+# ===============================
+# 🌳 Load datasets
+# ===============================
+data <- data  # your tree mask dataset
+
+USDA <- read.csv('/scratch/ope4/CPD_PAPER/damage_points_sf.csv') %>%
+  mutate(name = as.character(name))
+
+# ===============================
+# 🔗 Join ground truth info
+# ===============================
+df <- data %>%
+  group_by(.geo, year_month_1) %>%
+  inner_join(USDA, by = "name") %>%
+  ungroup()
+
+# ===============================
+# 🟢 Define bands to run
+# ===============================
+bands <- c("NDVI", "NDWI", "CCCI")  # you can add more
+
+# ===============================
+# 🔁 Function to run BEAST on one band
+# ===============================
+run_BEAST <- function(df, band_name) {
+  results <- list()
+  
+  for (geom in unique(df$.geo)) {
+    df_pixel <- df[df$.geo == geom, ]
+    
+    # Convert timestamp to Date and aggregate monthly
+    df_pixel$timestamp <- as.Date(df_pixel$timestamp)
+    df_pixel$ym <- format(df_pixel$timestamp, "%Y-%m")
+    monthly_df <- aggregate(df_pixel[[band_name]], by = list(df_pixel$ym), FUN = mean)
+    names(monthly_df) <- c("ym", band_name)
+    monthly_df <- monthly_df[order(monthly_df$ym), ]
+    
+    # Create regular time series
+    start_year <- as.numeric(substr(monthly_df$ym[1], 1, 4))
+    time_series <- ts(monthly_df[[band_name]], start = c(start_year, 1), frequency = 12)
+    
+    # Interpolate missing values
+    ts_filled <- na.approx(time_series, na.rm = FALSE)
+    
+    # Run BEAST safely
+    beast_out <- tryCatch(beast(ts_filled, tcp.minmax = c(0,3), season = "harmonic"), error = function(e) NULL)
+    
+    if (!is.null(beast_out)) {
+      cp_sorted <- sort(beast_out$trend$cp)
+      pr_sorted <- sort(beast_out$trend$cpPr)
+      
+      results[[length(results)+1]] <- data.frame(
+        method = "BEAST",
+        geom = geom,
+        band = band_name,
+        RMSE = beast_out$RMSE,
+        R2 = beast_out$R2,
+        ncp = beast_out$trend$ncp,
+        first_cp = ifelse(length(cp_sorted) >= 1, cp_sorted[1], NA),
+        second_cp = ifelse(length(cp_sorted) >= 2, cp_sorted[2], NA),
+        third_cp = ifelse(length(cp_sorted) >= 3, cp_sorted[3], NA),
+        first_pr = ifelse(length(pr_sorted) >= 1, pr_sorted[1], NA),
+        second_pr = ifelse(length(pr_sorted) >= 2, pr_sorted[2], NA),
+        third_pr = ifelse(length(pr_sorted) >= 3, pr_sorted[3], NA)
+      )
+    }
+  }
+  
+  return(do.call(rbind, results))
+}
+
+# ===============================
+# 🚀 Run BEAST for all bands
+# ===============================
+all_results <- lapply(bands, function(b) run_BEAST(df, b))
+final_results_BEAST <- do.call(rbind, all_results)
+
+# ===============================
+# ✅ Inspect results
+# ===============================
+head(final_results_BEAST)
+
+
+# ===============================
+# 📊 Create plots for all bands per pixel
+# ===============================
+library(ggplot2)
+
+plot_BEAST_all_bands <- function(df, final_results, bands) {
+  
+  plots <- list()
+  
+  for (geom in unique(df$.geo)) {
+    df_pixel <- df[df$.geo == geom, ]
+    
+    for (band_name in bands) {
+      
+      # Filter BEAST results for this pixel and band
+      res <- final_results %>%
+        filter(geom == geom, band == band_name)
+      
+      if (nrow(res) == 0) next  # skip if no result
+      
+      # Prepare monthly aggregated data
+      df_pixel$timestamp <- as.Date(df_pixel$timestamp)
+      df_pixel$ym <- format(df_pixel$timestamp, "%Y-%m")
+      monthly_df <- aggregate(df_pixel[[band_name]], by = list(df_pixel$ym), FUN = mean)
+      names(monthly_df) <- c("ym", "value")
+      monthly_df <- monthly_df[order(monthly_df$ym), ]
+      
+      # Time series
+      start_year <- as.numeric(substr(monthly_df$ym[1], 1, 4))
+      ts_data <- ts(monthly_df$value, start = c(start_year, 1), frequency = 12)
+      ts_filled <- na.approx(ts_data, na.rm = FALSE)
+      time_vec <- as.numeric(time(ts_data))
+      
+      # Trend
+      trend <- ts_filled
+      if (!is.na(res$first_cp[1])) {
+        # recreate trend using breakpoints (optional, else just use filled ts)
+        # for plotting, we'll just plot ts_filled
+        trend <- ts_filled
+      }
+      
+      # Period 1 & 2
+      parse_date_safe <- function(x) {
+        if (is.null(x) || length(x)==0 || is.na(x) || x=="") return(NA)
+        for (fmt in c("%Y-%m-%d","%m/%d/%Y","%m-%d-%Y")) {
+          d <- as.Date(x, format=fmt)
+          if (!is.na(d)) return(d)
+        }
+        return(NA)
+      }
+      
+      p1_time <- parse_date_safe(df_pixel$period_1[!is.na(df_pixel$period_1)][1])
+      p2_time <- parse_date_safe(df_pixel$period_2[!is.na(df_pixel$period_2)][1])
+      
+      date_to_decimal <- function(date) {
+        if (is.na(date)) return(NA)
+        yr <- as.numeric(format(date,"%Y"))
+        mo <- as.numeric(format(date,"%m"))
+        yr + (mo-1)/12
+      }
+      p1 <- date_to_decimal(p1_time)
+      p2 <- date_to_decimal(p2_time)
+      
+      # Build plot
+      p <- ggplot(data.frame(Time=time_vec, Value=ts_filled, Trend=trend), aes(Time, Value)) +
+        geom_line(color="forestgreen", linewidth=1) +
+        geom_line(aes(y=Trend), color="blue", linetype="dashed", linewidth=1) +
+        labs(title=paste("Pixel:", geom, "Band:", band_name),
+             x="Time (Years)", y=band_name) +
+        theme_minimal(base_size=12) +
+        theme(plot.title=element_text(face="bold", hjust=0.5),
+              panel.border=element_rect(colour="black", fill=NA))
+      
+      # Add BEAST breakpoints
+      bps <- c(res$first_cp, res$second_cp, res$third_cp)
+      bps <- bps[!is.na(bps)]
+      if (length(bps) > 0) {
+        p <- p + geom_vline(xintercept=bps, color="red", linetype="dashed")
+      }
+      
+      # Add period 1/2 lines
+      if (!is.na(p1)) p <- p + geom_vline(xintercept=p1, color="purple", linewidth=1) +
+        annotate("text", x=p1, y=max(ts_filled, na.rm=TRUE), label="P1",
+                 color="purple", angle=90, vjust=-0.5)
+      if (!is.na(p2)) p <- p + geom_vline(xintercept=p2, color="orange", linewidth=1) +
+        annotate("text", x=p2, y=max(ts_filled, na.rm=TRUE), label="P2",
+                 color="orange", angle=90, vjust=-0.5)
+      
+      # Save in list
+      plots[[paste(geom, band_name, sep="_")]] <- p
+    }
+  }
+  
+  return(plots)
+}
+
+# ===============================
+# 🚀 Run plotting function
+# ===============================
+plots_all <- plot_BEAST_all_bands(df, final_results_BEAST, bands)
+
+# ===============================
+# 💾 Save plots
+# ===============================
+for (name in names(plots_all)) {
+  ggsave(filename=paste0("BEAST_PLOT/BEAST_plot_", name, ".png"),
+         plot=plots_all[[name]],
+         width=8, height=5, dpi=300)
+}
+# -----------------------------
+# ✅ Ensure folder exists
+# -----------------------------
+folder <- "BEAST_PLOT"
+if (!dir.exists(folder)) dir.create(folder)
+
+# -----------------------------
+# 💾 Save all plots
+# -----------------------------
+for (name in names(plots_all)) {
+  file_path <- file.path(folder, paste0("BEAST_plot_", name, ".png"))
+  
+  ggsave(
+    filename = file_path,
+    plot = plots_all[[name]],
+    width = 8,
+    height = 5,
+    dpi = 300
+  )
+  
+  cat("Saved:", file_path, "\n")
+}
+
+cat("All plots saved to folder:", folder, "\n")
